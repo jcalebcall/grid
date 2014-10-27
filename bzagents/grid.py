@@ -42,8 +42,9 @@ class Agent(object):
         self.commands = []
 
         # Set tank move-to goals
-        self.goalList = [(-160, -160), (395, -395)]
-        self.currentGoalIndex = 0
+        self.goal_list = []
+        self.init_goals()
+        self.current_goal_index = 0
 
         # Initialize grid as numpy array
         self.grid = np.zeros((800, 800))
@@ -52,12 +53,21 @@ class Agent(object):
         # Initialize visualization
         show_grid.init_window(800, 800)
 
+    def init_goals(self):
+        is_odd = True
+        for i in range(8):
+            for j in range(8):
+                if is_odd:
+                    self.goal_list.append((-350 + 100 * j, 350 - 100 * i))
+                else:
+                    self.goal_list.append((350 - 100 * j, 350 - 100 * i))
+            is_odd = not is_odd
 
-    #def plot_fields(self):
+    def plot_fields(self):
         # Draw the visualization for the map
-        #self.plot_single(self.calc_attractive_v, self.bzrc.get_obstacles(), 'attractive.png')
+        self.plot_single(self.calc_attractive_v, 'attractive.png')
         #self.plot_single(self.calc_repulsive_v, self.bzrc.get_obstacles(), 'repulsive2.png')
-        #self.plot_single(self.calc_tangential_v, self.bzrc.get_obstacles(), 'tangential2.png')
+        self.plot_single(self.calc_tangential_v, self.bzrc.get_obstacles(), 'tangential.png')
         #self.plot_single(self.combined_fields, self.bzrc.get_obstacles(), 'combined2.png')
 
     def tick(self, time_diff):
@@ -83,15 +93,13 @@ class Agent(object):
         for i in range(len(grid)):
             for j in range(len(grid[i])):
                 #print str(grid[i][j]),
-                r = pos[1] + 400 + i
-                c = pos[0] + 400 + j
-                self.bayesian_filter(r, c, grid[i][j])
-            print '\n'
+                y = pos[1] + 400 + j
+                x = pos[0] + 400 + i
+                self.bayesian_filter(y, x, grid[i][j])
+            #print '\n'
 
-    #def update_visualization(self):
-
-    def bayesian_filter(self, r, c, obs):
-        p_occ = self.grid[r][c]
+    def bayesian_filter(self, y, x, obs):
+        p_occ = self.grid[y][x]
         p_obs_given_occ = .97
         p_not_obs_given_occ = .03
 
@@ -101,30 +109,26 @@ class Agent(object):
 
         # Bayes Theorem p(a|b) = p(b|a) * p(a) / p(b)
         if obs == 1:
-            self.grid[r][c] = p_obs_given_occ * p_occ / (p_occ * p_obs_given_occ + p_not_occ * p_obs_given_not_occ)
+            self.grid[y][x] = p_obs_given_occ * p_occ / (p_occ * p_obs_given_occ + p_not_occ * p_obs_given_not_occ)
         else:
-            self.grid[r][c] = p_not_obs_given_occ * p_occ / (p_occ * p_not_obs_given_occ + p_not_occ * p_not_obs_given_not_occ)
+            self.grid[y][x] = p_not_obs_given_occ * p_occ / (p_occ * p_not_obs_given_occ + p_not_occ * p_not_obs_given_not_occ)
 
     def update_goal(self, tank):
-        if tank.x == self.goalList[self.currentGoalIndex][0] and tank.y == self.goalList[self.currentGoalIndex][1]:
+        goal_x = self.goal_list[self.current_goal_index][0]
+        goal_y = self.goal_list[self.current_goal_index][1]
+        if (goal_x - 100) < tank.x < (goal_x + 100) \
+            and (goal_y - 100) < tank.y < (goal_y + 100):
             # This the case where we update the goal
-            self.currentGoalIndex += 1
+            self.current_goal_index += 1
 
     def move_to_goal(self, tank):
+        print 'Moving to goal: ' + str(self.goal_list[self.current_goal_index][0]) + ', ' + str(self.goal_list[self.current_goal_index][1])
         # calculate attractive and repulsive vectors
         (attractive_x, attractive_y) = self.calc_attractive_v(tank.x, tank.y)
-        #(repulsive_x, repulsive_y) = self.calc_repulsive_v(tank.x, tank.y)
+        #(tangential_x, tangential_y) = self.calc_tangential_v(tank.x, tank.y)
 
-        f_del_x = attractive_x #+ repulsive_x
-        f_del_y = attractive_y #+ repulsive_y
-        self.move_to_position(tank, f_del_x, f_del_y)
-
-    def pf_defend(self, tank):
-        # calculate attractive and repulsive vectors
-        (tangential_x, tangential_y) = self.calc_tangential_v(tank.x, tank.y)
-
-        f_del_x = tangential_x
-        f_del_y = tangential_y
+        f_del_x = attractive_x #+ tangential_x
+        f_del_y = attractive_y #+ tangential_y
         self.move_to_position(tank, f_del_x, f_del_y)
 
     def move_to_position(self, tank, del_x, del_y):
@@ -132,7 +136,7 @@ class Agent(object):
         target_angle = math.atan2(del_y,
                                   del_x)
         relative_angle = self.normalize_angle(target_angle - tank.angle)
-        command = Command(tank.index, self.vectorMagnitude(del_x, del_y), 2 * relative_angle, True)
+        command = Command(tank.index, self.vectorMagnitude(del_x, del_y), 2 * relative_angle, False)
         self.commands.append(command)
 
     def calc_attractive_v(self, x, y):
@@ -141,16 +145,18 @@ class Agent(object):
         del_y = None
 
         # position and radius of goal
-        xG = self.goalList[self.currentGoalIndex][0]
-        yG = self.goalList[self.currentGoalIndex][1]
+        xG = self.goal_list[self.current_goal_index][0]
+        yG = self.goal_list[self.current_goal_index][1]
         r = 1
 
         # Calculate distance and angle between our tank and the goal
         d = math.sqrt((xG - x) ** 2 + (yG - y) ** 2)
         a = math.atan2(yG - y, xG - x)
 
+        print 'distance: ' + str(d)
+
         # Set our spread and scaling constant
-        s = 50
+        s = 30
         o = 1.0
 
         # Set our delta x and y accordingly
@@ -247,57 +253,40 @@ class Agent(object):
         return (f_del_x, f_del_y)
 
     def calc_tangential_v(self, x, y):
-        # set up an attractive field for each flag
         list_del_x = []
         list_del_y = []
+        for i in range(len(self.grid)):
+            for j in range(len(self.grid[i])):
+                if self.grid[i][j] > .99:
+                    # Convert to world coordinates
+                    yG = i - 400
+                    xG = j - 400
 
-        flag = self.flags[self.ourBase]
-        del_x = None
-        del_y = None
+                    del_x = None
+                    del_y = None
 
-        # position and radius of flag
-        xG = flag.x
-        yG = flag.y
-        r = 1
+                    r = 1
 
-        # Calculate distance and angle between our tank and the flag
-        d = math.sqrt((xG - x) ** 2 + (yG - y) ** 2)
-        a = math.atan2(yG - y, xG - x) + 90
+                    d = math.sqrt((xG - x) ** 2 + (yG - y) ** 2)
+                    a = math.atan2(yG - y, xG - x) + 90
 
-         # Set our spread and scaling constant
-        s = 75
-        b = 1.0
+                     # Set our spread and scaling constant
+                    s = 1
+                    b = .2
 
-        # Set our delta x and y accordingly
-        if d < r:
-            del_x = (-math.copysign(1, math.cos(a))) * 10000  # big number
-            del_y = (-math.copysign(1, math.sin(a))) * 10000
-        elif r <= d <= (s + r):
-            del_x = -b * (s + r - d) * math.cos(a)
-            del_y = -b * (s + r - d) * math.sin(a)
-        elif d > (s + r):
-            del_x = 0
-            del_y = 0
+                    # Set our delta x and y accordingly
+                    if d < r:
+                        del_x = (-math.copysign(1, math.cos(a))) * 10000  # big number
+                        del_y = (-math.copysign(1, math.sin(a))) * 10000
+                    elif r <= d <= (s + r):
+                        del_x = -b * (s + r - d) * math.cos(a)
+                        del_y = -b * (s + r - d) * math.sin(a)
+                    elif d > (s + r):
+                        del_x = 0
+                        del_y = 0
 
-        list_del_x.append(del_x)
-        list_del_y.append(del_y)
-
-        # attractive portion
-        a = math.atan2(yG - y, xG - x)
-        s = 10
-        # Set our delta x and y accordingly
-        if d < r:
-            del_x = 0
-            del_y = 0
-        elif r <= d <= (s + r):
-            del_x = b * (d - r) * math.cos(a)
-            del_y = b * (d - r) * math.sin(a)
-        elif d > (s + r):
-            del_x = b * s * math.cos(a)
-            del_y = b * s * math.sin(a)
-
-        list_del_x.append(del_x)
-        list_del_y.append(del_y)
+                    list_del_x.append(del_x)
+                    list_del_y.append(del_y)
 
         # Combine the deltas for finished repulsive vector
         f_del_x = 0.0
@@ -332,17 +321,9 @@ class Agent(object):
     Plotting code
      *******************************"""
 
-    def show_obstacle(self, plot, points):
-        """Draw a polygon. Points is a list if [x,y] tuples
-        """
-        for p1, p2 in zip(points, [points[-1]] + list(points)):
-            plot.plot([p1[0], p2[0]], [p1[1], p2[1]], 'b')
-
-
     def show_arrows(self, plot, potential_func, xlim=(-400, 400), ylim=(-400, 400), res=20):
         """
         Arguments:
-            fns: a list of potential field functions
             xlim, ylim: the limits of the plot
             res: resolution for (spacing between) arrows
         """
@@ -357,15 +338,13 @@ class Agent(object):
                 plot.arrow(x, y, dx, dy, head_width=res / 7.0, color='red', linewidth=.3)
 
 
-    def plot_single(self, potential_func, obstacles, filename, xlim=(-400, 400), ylim=(-400, 400)):
+    def plot_single(self, potential_func, filename, xlim=(-400, 400), ylim=(-400, 400)):
         """Plot a potential function and some obstacles, and write the resulting
         image to a file"""
         print "Generating", filename
         fig = plt.figure()
         plot = plt.subplot(111)
         self.show_arrows(plot, potential_func, xlim=xlim, ylim=ylim)
-        for obstacle in obstacles:
-            self.show_obstacle(plot, obstacle)
         fig.savefig(filename, format='png')
 
 
