@@ -21,14 +21,17 @@
 #################################################################
 
 import sys
+sys.path.append("/home/caleb/PycharmProjects/grid/visualization")
+from bzrc import BZRC, Command
+import show_grid
+
 import math
 import time
-
-from bzrc import BZRC, Command
 import matplotlib.pyplot as plt
 from pylab import *
 import math
 import random
+from numpy import *
 
 
 class Agent(object):
@@ -37,33 +40,77 @@ class Agent(object):
     def __init__(self, bzrc):
         self.bzrc = bzrc
         self.commands = []
-        self.goalList = [(-395, -395), (395, -395)]
+
+        # Set tank move-to goals
+        self.goalList = [(-160, -160), (395, -395)]
         self.currentGoalIndex = 0
 
-    def plot_fields(self):
+        # Initialize grid as numpy array
+        self.grid = np.zeros((800, 800))
+        self.grid.fill(.7)
+
+        # Initialize visualization
+        show_grid.init_window(800, 800)
+
+
+    #def plot_fields(self):
         # Draw the visualization for the map
-        self.plot_single(self.calc_attractive_v, self.bzrc.get_obstacles(), 'attractive.png')
+        #self.plot_single(self.calc_attractive_v, self.bzrc.get_obstacles(), 'attractive.png')
         #self.plot_single(self.calc_repulsive_v, self.bzrc.get_obstacles(), 'repulsive2.png')
         #self.plot_single(self.calc_tangential_v, self.bzrc.get_obstacles(), 'tangential2.png')
         #self.plot_single(self.combined_fields, self.bzrc.get_obstacles(), 'combined2.png')
 
     def tick(self, time_diff):
         """Some time has passed; decide what to do next."""
-        mytanks, othertanks, flags, shots = self.bzrc.get_lots_o_stuff()
+        mytanks = self.bzrc.get_mytanks()
         self.mytanks = mytanks
 
+
         tank = mytanks[0]
-        self.updateGoal(tank)
-        self.moveToGoal(tank)
+        pos, size, grid = self.bzrc.get_occgrid(0)
+        self.process_grid(pos, size, grid)
+        show_grid.update_grid(self.grid)
+        show_grid.draw_grid()
+
+        self.update_goal(tank)
+        self.move_to_goal(tank)
 
         results = self.bzrc.do_commands(self.commands)
 
-    def updateGoal(self, tank):
+    def process_grid(self, pos, size, grid):
+        #print 'at ' + str(pos[0]) + ',' + str(pos[1])
+        #print 'size ' + str(size[0]) + 'x' + str(size[1])
+        for i in range(len(grid)):
+            for j in range(len(grid[i])):
+                #print str(grid[i][j]),
+                r = pos[1] + 400 + i
+                c = pos[0] + 400 + j
+                self.bayesian_filter(r, c, grid[i][j])
+            print '\n'
+
+    #def update_visualization(self):
+
+    def bayesian_filter(self, r, c, obs):
+        p_occ = self.grid[r][c]
+        p_obs_given_occ = .97
+        p_not_obs_given_occ = .03
+
+        p_not_occ = 1 - p_occ
+        p_obs_given_not_occ = .10
+        p_not_obs_given_not_occ = .90
+
+        # Bayes Theorem p(a|b) = p(b|a) * p(a) / p(b)
+        if obs == 1:
+            self.grid[r][c] = p_obs_given_occ * p_occ / (p_occ * p_obs_given_occ + p_not_occ * p_obs_given_not_occ)
+        else:
+            self.grid[r][c] = p_not_obs_given_occ * p_occ / (p_occ * p_not_obs_given_occ + p_not_occ * p_not_obs_given_not_occ)
+
+    def update_goal(self, tank):
         if tank.x == self.goalList[self.currentGoalIndex][0] and tank.y == self.goalList[self.currentGoalIndex][1]:
             # This the case where we update the goal
-            self.currentGoalIndex += 1;
+            self.currentGoalIndex += 1
 
-    def moveToGoal(self, tank):
+    def move_to_goal(self, tank):
         # calculate attractive and repulsive vectors
         (attractive_x, attractive_y) = self.calc_attractive_v(tank.x, tank.y)
         #(repulsive_x, repulsive_y) = self.calc_repulsive_v(tank.x, tank.y)
@@ -338,7 +385,7 @@ def main():
 
     agent = Agent(bzrc)
 
-    agent.plot_fields()
+    #agent.plot_fields()
 
     prev_time = time.time()
 

@@ -173,7 +173,7 @@ class BZRC:
                 if line[y] == '1':
                     grid[x][y] = 1
         self.expect('end', True)
-        return pos, grid
+        return pos, size, grid
 
     def read_flags(self):
         """Get flag information."""
